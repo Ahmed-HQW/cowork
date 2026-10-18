@@ -51,7 +51,7 @@ cowork/
 ## 🚀 Installation
 
 ```bash
-git clone https://github.com/<your-username>/cowork.git
+git clone https://github.com/Ahmed-HQW/cowork/cowork.git
 cd cowork
 
 # pull the local models
