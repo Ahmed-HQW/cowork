@@ -5,7 +5,7 @@ import re
 from ollama_client import chat
 from system_prompt import build_messages
 from memory import ShortTermMemory, LongTermMemory
-from tools import dispatch
+from tools import dispatch, TOOL_SCHEMAS
 
 
 def extract_json(text: str) -> dict:
@@ -28,7 +28,7 @@ class CoworkAgent:
     def emit(self, kind: str, data):
         self.on_event(self.name, kind, data)
 
-    def run(self, goal: str, max_steps: int = 25) -> str:
+    def run(self, goal: str, max_steps: int = 6) -> str:
         self.stm.add("user", goal)
         context_docs = self.ltm.search(goal, k=4)
         context = "\n---\n".join(context_docs)
@@ -57,6 +57,13 @@ class CoworkAgent:
             params = obj.get("params", {})
             if "plan" in obj:
                 plan_notice = json.dumps(obj["plan"], ensure_ascii=False)
+
+            # الموديل الصغير كيهلوس بعض المرات ويخترع أداة ماكاينةش — نديرو fallback
+            # بدل ما نخليوه يلوب بلا نهاية فنفس الخطأ
+            if action not in TOOL_SCHEMAS:
+                self.emit("error", f"أداة مختلقة: {action} — نرجعها final_answer")
+                action = "final_answer"
+                params = {"answer": thinking or "ما قدرتش نفهم الطلب، عاود صيغو بطريقة أوضح."}
 
             self.emit("thinking", thinking)
             self.emit("action", {"action": action, "params": params})

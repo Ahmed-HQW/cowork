@@ -4,20 +4,40 @@
 نقطة الدخول: python3 main.py  (أو الأمر cowork بعد التثبيت)
 """
 import sys
+from pathlib import Path
+import shutil
 from ollama_client import is_server_up
 from ui import console, banner, status_bar, show_thinking_tree, memory_notice, session_summary
-from bootstrap import first_launch_ingest
+from bootstrap import first_launch_ingest, full_home_scan
+from background import run_in_background, get_status, chat_active
 from agent import CoworkAgent
 from orchestrator import run_multi_agent
-from config import NUM_CTX, MODEL_NAME
+from config import NUM_CTX, MODEL_NAME, COWORK_DIR, CACHE_DIR, DB_DIR, LOG_DIR, HOME
 
 SLASH_COMMANDS = {
     "/bug": "أبلغ عن مشكلة فالمهمة الحالية",
     "/compact": "ضغط الذاكرة القصيرة",
     "/design": "وضع تصميم/تخطيط بلا تنفيذ (Plan Mode)",
     "/multi": "شغّل عدة agents بالتوازي (coder/tester/docs)",
+    "/scan-home": "فهرسة /home/<user> كاملة فـ الخلفية (RAG)",
+    "/jobs": "عرض حالة المهام الخلفية (فهرسة، إلخ)",
+    "/clean-cache": "مسح كاش Cowork (vectordb, cache, logs, checkpoints)",
     "/exit": "خروج",
 }
+
+
+def clean_cache():
+    targets = [CACHE_DIR, DB_DIR, LOG_DIR,
+               COWORK_DIR / ".ingest_checkpoint.json",
+               COWORK_DIR / ".bootstrapped",
+               COWORK_DIR / "job_status.json"]
+    for t in targets:
+        if t.is_dir():
+            shutil.rmtree(t, ignore_errors=True)
+            t.mkdir(parents=True, exist_ok=True)
+        elif t.exists():
+            t.unlink()
+    console.print("[green]🧹 تم مسح الكاش بالكامل (vectordb + logs + checkpoints).[/green]")
 
 
 def event_logger(agent_name, kind, data):
@@ -38,8 +58,9 @@ def repl():
         console.print("[red]✗ Ollama ماشي خدام. دير: `ollama serve` و `ollama pull qwen2.5:0.5b`[/red]")
         sys.exit(1)
 
-    first_launch_ingest()
-    memory_notice(str(pathlib.Path.home() / "zunexa-data"))
+    # الفهرسة تخدم فـ thread خلفي — الـ REPL يبدا direct بلا تسنية
+    run_in_background("bootstrap", first_launch_ingest)
+    console.print("[dim]📚 الفهرسة الأولى بدات فـ الخلفية (/jobs باش تتبع التقدم)...[/dim]")
     mode = "Auto"
     tokens_used = 0
     agent = CoworkAgent(on_event=event_logger)
@@ -67,11 +88,27 @@ def repl():
             for role, out in results.items():
                 console.print(f"[bold]{role}:[/bold] {out}")
             continue
+        if user_in == "/scan-home":
+            run_in_background("home_scan", full_home_scan, HOME)
+            console.print("[dim]🔍 فهرسة /home بدات فـ الخلفية (/jobs باش تتبع).[/dim]")
+            continue
+        if user_in == "/jobs":
+            for job, info in get_status().items():
+                console.print(f"[cyan]{job}[/cyan]: {info['state']} — {info.get('progress','')}")
+            continue
+        if user_in == "/clean-cache":
+            clean_cache()
+            continue
         if user_in in SLASH_COMMANDS:
             console.print(f"[dim]{SLASH_COMMANDS[user_in]}[/dim]")
             continue
 
-        answer = agent.run(user_in)
+        chat_active.set()  # نوقفو الفهرسة الخلفية وقت التفكير باش ما يتناحصروش على الـ CPU
+        try:
+            with console.status("[yellow]🤔 كيفكر...[/yellow]", spinner="dots"):
+                answer = agent.run(user_in)
+        finally:
+            chat_active.clear()
         console.print(f"[bold green]Cowork:[/bold green] {answer}")
         tokens_used += len(user_in.split()) + len(answer.split())
 

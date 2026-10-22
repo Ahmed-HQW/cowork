@@ -9,8 +9,9 @@ from pathlib import Path
 OLLAMA_HOST = "http://localhost:11434"
 MODEL_NAME = "qwen2.5:0.5b"
 EMBED_MODEL = "nomic-embed-text"   # لازم تدير: ollama pull nomic-embed-text
-NUM_CTX = 8192                      # عدّلها لـ 4096 إذا الرام ضعيفة وقت التشغيل
+NUM_CTX = 2048                      # i3-4005U ضعيف — 2048 كافي وأسرع بزاف من 8192
 TEMPERATURE = 0.3
+NUM_THREAD = 2                       # i3-4005U عندو 2 core/4 threads — نخلو core واحد حر للنظام
 
 # ====== المسارات ======
 HOME = Path.home()                                  # مثلا /home/ahmed

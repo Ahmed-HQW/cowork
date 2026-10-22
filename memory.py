@@ -30,7 +30,9 @@ class LongTermMemory:
     def add(self, text: str, meta: dict | None = None, doc_id: str | None = None):
         vec = embed(text)
         doc_id = doc_id or f"doc_{int(time.time()*1000)}"
-        self.col.add(ids=[doc_id], embeddings=[vec], documents=[text], metadatas=[meta or {}])
+        # Chroma كيرفض metadata = {} فارغة تماماً — خاصها فيها غير مفتاح واحد الأقل
+        safe_meta = meta if meta else {"source": "chat"}
+        self.col.add(ids=[doc_id], embeddings=[vec], documents=[text], metadatas=[safe_meta])
 
     def search(self, query: str, k: int = 5) -> list[str]:
         vec = embed(query)
